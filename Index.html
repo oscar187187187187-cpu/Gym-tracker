@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gym Tracker & Groq AI</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-main: #ffffff;
+            --text-muted: #b3b3b3;
+            --accent: #bb86fc;
+            --success: #03dac6;
+            --danger: #cf6679;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1, h2 {
+            text-align: center;
+            color: var(--accent);
+        }
+
+        .settings-card {
+            background-color: var(--card-bg);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        input, select, button {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #333;
+            background-color: #2c2c2c;
+            color: var(--text-main);
+            font-size: 16px;
+        }
+
+        button {
+            background-color: var(--accent);
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.8;
+        }
+
+        .workout-day {
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .exercise-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr auto;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #333;
+        }
+
+        .exercise-row:last-child {
+            border-bottom: none;
+        }
+
+        .exercise-name {
+            font-weight: bold;
+        }
+
+        .progress-positive { color: var(--success); }
+        .progress-negative { color: var(--danger); }
+        .progress-neutral { color: var(--text-muted); }
+
+        .ai-btn {
+            background-color: transparent;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 5px 10px;
+        }
+
+        .ai-btn:hover {
+            background-color: var(--accent);
+            color: #000;
+        }
+
+        .motivation-box {
+            grid-column: 1 / -1;
+            background-color: #2c2c2c;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 5px;
+            font-style: italic;
+            display: none;
+        }
+
+        @media (max-width: 600px) {
+            .exercise-row {
+                grid-template-columns: 1fr;
+                gap: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Fitness Fortschritt</h1>
+    
+    <div class="settings-card">
+        <label for="api-key">Groq API Key (wird nur lokal im Browser gespeichert):</label>
+        <input type="password" id="api-key" placeholder="gsk_...">
+        
+        <label for="week-selector">Woche auswählen:</label>
+        <select id="week-selector" onchange="changeWeek()">
+            <option value="1">Woche 1</option>
+            <option value="2">Woche 2</option>
+            <option value="3">Woche 3</option>
+            <option value="4">Woche 4</option>
+            <option value="5">Woche 5</option>
+            <option value="6">Woche 6</option>
+        </select>
+    </div>
+
+    <div id="workout-container">
+        <!-- Trainingsplan wird per JS generiert -->
+    </div>
+</div>
+
+<script>
+    // Dein Trainingsplan als Basis-Datenstruktur
+    const plan = {
+        "Montag (Pull)": ["Klimmzüge", "T-Bar-Rudern", "Kabelrudern (eng)", "Reverse Butterfly", "Bizepscurls"],
+        "Dienstag (Push)": ["Bankdrücken", "Schrägbankdrücken", "Schulterdrücken (OHP)", "Seitheben", "Trizepsdrücken am Kabel"],
+        "Mittwoch (Legs)": ["Kniebeugen (Squats)", "Beinbeuger-Maschine", "Beinpresse", "Wadenheben"]
+    };
+
+    let currentWeek = 1;
+    let workoutData = JSON.parse(localStorage.getItem('gymData')) || {};
+
+    // Initialisierung
+    document.addEventListener("DOMContentLoaded", () => {
+        const savedKey = localStorage.getItem('groqApiKey');
+        if(savedKey) document.getElementById('api-key').value = savedKey;
+        
+        document.getElementById('api-key').addEventListener('change', (e) => {
+            localStorage.setItem('groqApiKey', e.target.value);
+        });
+
+        renderWorkouts();
+    });
+
+    function changeWeek() {
+        currentWeek = parseInt(document.getElementById('week-selector').value);
+        renderWorkouts();
+    }
+
+    function saveWeight(day, exercise, weight) {
+        if (!workoutData[currentWeek]) workoutData[currentWeek] = {};
+        if (!workoutData[currentWeek][day]) workoutData[currentWeek][day] = {};
+        
+        workoutData[currentWeek][day][exercise] = parseFloat(weight);
+        localStorage.setItem('gymData', JSON.stringify(workoutData));
+        
+        // Neu rendern, um Prozentzahlen zu updaten
+        renderWorkouts();
+    }
+
+    function calculateProgress(day, exercise) {
+        if (currentWeek <= 1) return { text: "-", class: "progress-neutral", value: 0 };
+        
+        const currentWeight = workoutData[currentWeek]?.[day]?.[exercise];
+        const lastWeekWeight = workoutData[currentWeek - 1]?.[day]?.[exercise];
+
+        if (!currentWeight || !lastWeekWeight) return { text: "-", class: "progress-neutral", value: 0 };
+
+        const diff = ((currentWeight - lastWeekWeight) / lastWeekWeight) * 100;
+        const roundedDiff = diff.toFixed(1);
+
+        if (diff > 0) return { text: `+${roundedDiff}% 📈`, class: "progress-positive", value: roundedDiff };
+        if (diff < 0) return { text: `${roundedDiff}% 📉`, class: "progress-negative", value: roundedDiff };
+        return { text: `±0% ➖`, class: "progress-neutral", value: roundedDiff };
+    }
+
+    function renderWorkouts() {
+        const container = document.getElementById('workout-container');
+        container.innerHTML = '';
+
+        for (const [day, exercises] of Object.entries(plan)) {
+            const dayDiv = document.createElement('div');
+            dayDiv.className = 'workout-day';
+            
+            let html = `<h2>${day}</h2>`;
+            
+            exercises.forEach((ex, index) => {
+                const currentWeight = workoutData[currentWeek]?.[day]?.[ex] || '';
+                const progress = calculateProgress(day, ex);
+                const uniqueId = `${day.replace(/\s/g, '')}-${index}`;
+
+                html += `
+                    <div class="exercise-row">
+                        <div class="exercise-name">${ex}</div>
+                        <div>
+                            <input type="number" step="0.5" placeholder="kg" value="${currentWeight}" 
+                                   onchange="saveWeight('${day}', '${ex}', this.value)">
+                        </div>
+                        <div class="${progress.class}">${progress.text}</div>
+                        <button class="ai-btn" onclick="generateMotivation('${ex}', '${progress.value}', '${uniqueId}')">AI Spruch</button>
+                        <div id="mot-${uniqueId}" class="motivation-box"></div>
+                    </div>
+                `;
+            });
+            
+            dayDiv.innerHTML = html;
+            container.appendChild(dayDiv);
+        }
+    }
+
+    async function generateMotivation(exercise, progressValue, boxId) {
+        const apiKey = document.getElementById('api-key').value;
+        const motBox = document.getElementById(`mot-${boxId}`);
+        
+        if (!apiKey) {
+            alert("Bitte trage oben deinen Groq API Key ein!");
+            return;
+        }
+
+        motBox.style.display = 'block';
+        motBox.innerText = "Groq überlegt...";
+
+        const prompt = `Der Nutzer hat bei der Übung '${exercise}' einen Fortschritt von ${progressValue}% im Vergleich zur Vorwoche gemacht. Gib ihm einen extrem kurzen, knackigen und leicht humorvollen Motivationsspruch auf Deutsch (maximal 1 Satz, im Gym-Bro Slang).`;
+
+        try {
+            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: "llama3-8b-8192", // Schnelles Standard-Modell bei Groq
+                    messages: [
+                        { role: "system", content: "Du bist ein motivierender, humorvoller Gym-Bro." },
+                        { role: "user", content: prompt }
+                    ],
+                    max_tokens: 50,
+                    temperature: 0.7
+                })
+            });
+
+            const data = await response.json();
+            
+            if (data.error) {
+                motBox.innerText = `Fehler: ${data.error.message}`;
+            } else {
+                motBox.innerText = data.choices[0].message.content;
+            }
+        } catch (error) {
+            motBox.innerText = "Fehler bei der Verbindung zur Groq API.";
+            console.error(error);
+        }
+    }
+</script>
+
+</body>
+</html>
