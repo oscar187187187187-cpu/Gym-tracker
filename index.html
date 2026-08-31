@@ -188,7 +188,7 @@
 
         <div id="tab-text">
             <label for="plan-text">Füge deinen Plan als Text ein:</label>
-            <textarea id="plan-text" rows="4" placeholder="z.B. Montag: Bankdrücken 3x8, Seitheben 4x12. Dienstag: Klimmzüge 3x8..."></textarea>
+            <textarea id="plan-text" rows="4" placeholder="z.B. Bankdrücken, Klimmzüge, Kniebeugen..."></textarea>
             <button onclick="generatePlanFromText()">Plan aus Text generieren</button>
         </div>
 
@@ -224,10 +224,10 @@
 
 <script>
     let activeWeek = 1;
-    let gymData = JSON.parse(localStorage.getItem('gym_tracker_data')) || {
-        plan: [],
-        logs: {}
-    };
+    let gymData = JSON.parse(localStorage.getItem('gym_tracker_data')) || {};
+    gymData.plan = Array.isArray(gymData.plan) ? gymData.plan : [];
+    gymData.logs = (gymData.logs && typeof gymData.logs === 'object') ? gymData.logs : {};
+
     let chartInstance = null;
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -236,9 +236,9 @@
             document.getElementById('groq-key').value = key;
             setStatus('api-status', '✓ API-Key geladen', 'success');
         }
+        initChart();
         renderTracker();
         populateExerciseSelect();
-        initChart();
     });
 
     function saveApiKey() {
@@ -258,6 +258,7 @@
 
     function setStatus(elementId, text, type) {
         const el = document.getElementById(elementId);
+        if (!el) return;
         el.innerText = text;
         el.className = `status-msg ${type === 'success' ? 'status-success' : 'status-error'}`;
     }
@@ -362,7 +363,7 @@
                         'Authorization': `Bearer ${apiKey}`
                     },
                     body: JSON.stringify({
-                        model: "llama-3.2-11b-vision-preview",
+                        model: "llama-3.2-11b-vision-instruct",
                         messages: [
                             {
                                 role: "user",
@@ -419,7 +420,9 @@
         const currentWeight = gymData.logs[activeWeek]?.[exercise];
         const lastWeekWeight = gymData.logs[activeWeek - 1]?.[exercise];
 
-        if (!currentWeight || !lastWeekWeight) return { text: "-", class: "progress-neutral", value: 0 };
+        if (currentWeight === undefined || lastWeekWeight === undefined || lastWeekWeight === 0) {
+            return { text: "-", class: "progress-neutral", value: 0 };
+        }
 
         const diff = ((currentWeight - lastWeekWeight) / lastWeekWeight) * 100;
         const roundedDiff = diff.toFixed(1);
@@ -432,7 +435,7 @@
     async function generateMotivation(exercise, progressValue, boxId) {
         const apiKey = getApiKey();
         const motBox = document.getElementById(`mot-${boxId}`);
-        if (!apiKey) return;
+        if (!apiKey || !motBox) return;
 
         motBox.style.display = 'block';
         motBox.innerText = "Groq überlegt...";
@@ -468,6 +471,10 @@
         }
     }
 
+    function escapeAttr(str) {
+        return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+
     function renderTracker() {
         const container = document.getElementById('workout-editor');
         container.innerHTML = '';
@@ -478,17 +485,18 @@
         }
 
         gymData.plan.forEach((ex, index) => {
-            const val = gymData.logs[activeWeek]?.[ex] || '';
+            const val = gymData.logs[activeWeek]?.[ex] !== undefined ? gymData.logs[activeWeek][ex] : '';
             const progress = calculateProgress(ex);
             const uniqueId = `ex-${index}`;
+            const safeEx = escapeAttr(ex);
 
             const row = document.createElement('div');
             row.className = 'exercise-item';
             row.innerHTML = `
                 <div><strong>${ex}</strong></div>
-                <div><input type="number" step="0.5" placeholder="kg" value="${val}" onchange="saveWeight('${ex}', this.value)"></div>
+                <div><input type="number" step="0.5" placeholder="kg" value="${val}" onchange="saveWeight('${safeEx}', this.value)"></div>
                 <div class="${progress.class}">${progress.text}</div>
-                <div><button class="ai-btn" onclick="generateMotivation('${ex}', '${progress.value}', '${uniqueId}')">AI Spruch</button></div>
+                <div><button class="ai-btn" onclick="generateMotivation('${safeEx}', '${progress.value}', '${uniqueId}')">AI Spruch</button></div>
                 <div id="mot-${uniqueId}" class="motivation-box"></div>
             `;
             container.appendChild(row);
@@ -502,7 +510,7 @@
     function populateExerciseSelect() {
         const select = document.getElementById('chart-exercise-select');
         select.innerHTML = '';
-        if (gymData.plan) {
+        if (gymData.plan && gymData.plan.length > 0) {
             gymData.plan.forEach(ex => {
                 const opt = document.createElement('option');
                 opt.value = ex;
@@ -514,7 +522,9 @@
     }
 
     function initChart() {
-        const ctx = document.getElementById('progressChart').getContext('2d');
+        const canvas = document.getElementById('progressChart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
         chartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -540,11 +550,12 @@
 
     function updateChart() {
         if (!chartInstance) return;
-        const selectedEx = document.getElementById('chart-exercise-select').value;
+        const select = document.getElementById('chart-exercise-select');
+        const selectedEx = select ? select.value : '';
         
         const weeks = Object.keys(gymData.logs).sort((a,b) => parseInt(a) - parseInt(b));
         const labels = weeks.map(w => `Woche ${w}`);
-        const dataPoints = weeks.map(w => gymData.logs[w][selectedEx] || 0);
+        const dataPoints = weeks.map(w => (gymData.logs[w] && gymData.logs[w][selectedEx]) ? gymData.logs[w][selectedEx] : 0);
 
         chartInstance.data.labels = labels;
         chartInstance.data.datasets[0].data = dataPoints;
