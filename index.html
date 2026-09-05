@@ -138,7 +138,6 @@
             letter-spacing: 0.5px;
         }
 
-        /* Der native Picker liegt unsichtbar darüber, falls man ihn doch nutzen will */
         .week-picker-container input[type="week"] {
             opacity: 0;
             position: absolute;
@@ -211,7 +210,7 @@
         }
 
         .ex-name {
-            font-size: 1.25rem; /* RIESIG FÜR GUTE LESBARKEIT */
+            font-size: 1.25rem;
             font-weight: 700;
             color: #ffffff;
             line-height: 1.4;
@@ -222,7 +221,7 @@
         .ex-stats {
             color: var(--accent-secondary);
             font-family: monospace;
-            font-size: 1.15rem; /* VERGRÖSSERT */
+            font-size: 1.15rem;
             font-weight: bold;
         }
 
@@ -244,7 +243,7 @@
         }
 
         /* ==========================================================================
-           6. FORMULAR FÜR NEUE ÜBUNGEN (TEXTAREA + GROSSE INPUTS)
+           6. FORMULAR FÜR NEUE ÜBUNGEN
            ========================================================================== */
         .add-workout-form {
             display: flex;
@@ -262,14 +261,13 @@
             width: 100%;
         }
 
-        /* Textarea für Übungsnamen - gibt richtig viel Platz */
         .add-workout-form textarea {
             background: #0f0f13;
             border: 1px solid var(--gym-border);
             color: #ffffff;
             padding: 12px;
             border-radius: 8px;
-            font-size: 1.15rem; /* Größere Schrift beim Tippen */
+            font-size: 1.15rem;
             width: 100%;
             resize: vertical;
             min-height: 60px;
@@ -281,7 +279,7 @@
             color: #ffffff;
             padding: 12px 8px;
             border-radius: 8px;
-            font-size: 1.15rem; /* Größere Schrift bei Zahlen */
+            font-size: 1.15rem;
             text-align: center;
         }
 
@@ -360,11 +358,10 @@
         </div>
     </header>
 
-    <!-- KALENDER NAVIGATION (MIT DATUM) -->
+    <!-- KALENDER NAVIGATION -->
     <nav class="calendar-nav">
         <button class="btn-nav-week" onclick="UI.changeWeek(-1)">◀</button>
         <div class="week-picker-container">
-            <!-- Dieses Textfeld zeigt jetzt Tag. Monat. Jahr an -->
             <div id="week-display-text">Lade Datum...</div>
             <input type="week" id="week-picker" onchange="UI.selectWeek(this.value)">
             <div class="week-stats" id="week-volume-display">Volumen: 0 kg</div>
@@ -425,9 +422,6 @@
     <script>
         const DAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
 
-        /**
-         * ISO-WOCHEN LOGIK & DATUM-FORMATIERUNG
-         */
         function getISOWeekString(date) {
             const tempDate = new Date(date.valueOf());
             const dayNumber = (date.getDay() + 6) % 7;
@@ -453,7 +447,6 @@
             return ISOweekStart;
         }
 
-        // NEU: Wandelt ISO-String (2026-W36) in zz.B. "31.08.2026 - 06.09.2026" um
         function formatWeekDateRange(weekStr) {
             const start = getDateFromISOWeek(weekStr);
             const end = new Date(start);
@@ -495,25 +488,61 @@
                     try { this.state.workouts = JSON.parse(savedData); } catch(e) { this.state.workouts = {}; }
                 } else {
                     this.state.workouts = {};
-                    this.ensureWeekExists(this.state.currentWeekStr);
-                    // Standard Seed-Daten
-                    this.state.workouts[this.state.currentWeekStr]["Montag"].push({ id: 'ex_1', name: "Fußball (draußen)", sets: 1, weight: 0, reps: "90" });
-                    this.state.workouts[this.state.currentWeekStr]["Mittwoch"].push({ id: 'ex_2', name: "Fußball (draußen)", sets: 1, weight: 0, reps: "90" });
-                    this.state.workouts[this.state.currentWeekStr]["Donnerstag"].push({ id: 'ex_3', name: "Volleyball (Halle)", sets: 1, weight: 0, reps: "120" });
-                    this.state.workouts[this.state.currentWeekStr]["Freitag"].push({ id: 'ex_4', name: "Fußball (draußen)", sets: 1, weight: 0, reps: "90" });
                 }
 
                 this.ensureWeekExists(this.state.currentWeekStr);
+                
                 this.state.apiKey = localStorage.getItem('gymTracker_apiKey') || "";
                 this.state.goal = localStorage.getItem('gymTracker_goal') || "Muskelaufbau";
             }
 
+            // HIER IST DIE NEUE LOGIK:
             static ensureWeekExists(weekStr) {
                 if (!this.state.workouts[weekStr]) {
                     this.state.workouts[weekStr] = {
                         "Montag": [], "Dienstag": [], "Mittwoch": [], "Donnerstag": [], 
                         "Freitag": [], "Samstag": [], "Sonntag": []
                     };
+                    
+                    // Versuche, Daten aus der letzten aktiven Woche zu kopieren
+                    this.autoCopyFromLastActiveWeek(weekStr);
+                }
+            }
+
+            static autoCopyFromLastActiveWeek(targetWeekStr) {
+                // Finde alle Wochen, die chronologisch VOR der neuen Woche liegen
+                const pastWeeks = Object.keys(this.state.workouts)
+                    .filter(w => w < targetWeekStr)
+                    .sort((a, b) => b.localeCompare(a)); // Absteigend sortieren (neueste zuerst)
+
+                // Suche die erste Woche, die tatsächlich Einträge hat
+                for (const pastWeek of pastWeeks) {
+                    let hasData = false;
+                    
+                    DAYS.forEach(day => {
+                        if (this.state.workouts[pastWeek][day].length > 0) hasData = true;
+                    });
+
+                    if (hasData) {
+                        // Daten gefunden! Kopiere den gesamten Plan rüber.
+                        DAYS.forEach(day => {
+                            this.state.workouts[pastWeek][day].forEach(ex => {
+                                // Neue eindeutige ID generieren, damit sie separat löschbar bleiben
+                                const newId = 'ex_' + Date.now() + Math.random().toString(36).substr(2, 5);
+                                
+                                this.state.workouts[targetWeekStr][day].push({
+                                    id: newId,
+                                    name: ex.name,
+                                    sets: ex.sets,
+                                    weight: ex.weight,
+                                    reps: ex.reps
+                                });
+                            });
+                        });
+                        this.saveWorkouts();
+                        Toast.show("Trainingsplan aus Vorwoche übernommen!", "success");
+                        return; // Nach dem erfolgreichen Kopieren abbrechen
+                    }
                 }
             }
 
@@ -528,7 +557,7 @@
                     name: name,
                     sets: parseInt(sets) || 1,
                     weight: parseFloat(weight) || 0,
-                    reps: reps.toString().trim() // WICHTIG: String für "10-8-6"
+                    reps: reps.toString().trim()
                 };
                 
                 this.state.workouts[week][day].push(newEx);
@@ -577,7 +606,6 @@
                 const weekStr = GymData.state.currentWeekStr;
                 document.getElementById('week-picker').value = weekStr;
                 
-                // Setze das formatiere Datum mit Tag, Monat, Jahr
                 document.getElementById('week-display-text').textContent = formatWeekDateRange(weekStr);
                 
                 const vol = GymData.getVolumeForWeek(weekStr);
@@ -658,15 +686,13 @@
                     }
                     daySec.appendChild(exList);
 
-                    // NEUES, RIESIGES FORMULAR
                     const addForm = document.createElement('div');
                     addForm.className = 'add-workout-form';
 
-                    // Textarea anstatt Input, damit du alles siehst!
                     const inName = document.createElement('textarea');
                     inName.className = 'input-ex-name';
-                    inName.placeholder = 'Übungsname (z.B. Bankdrücken, 30 Grad)';
-                    inName.rows = 2; // Extra viel Platz
+                    inName.placeholder = 'Übungsname (z.B. Bankdrücken)';
+                    inName.rows = 2; 
 
                     const row2 = document.createElement('div');
                     row2.className = 'form-row';
@@ -681,12 +707,11 @@
                     inWeight.className = 'input-ex-weight';
                     inWeight.placeholder = 'kg';
                     
-                    // Reps-Feld zwingend als TEXT deklariert
                     const inReps = document.createElement('input');
                     inReps.type = 'text'; 
-                    inReps.inputMode = 'text'; // Zwingt Handy-Tastaturen, alle Zeichen (auch '-') zuzulassen
+                    inReps.inputMode = 'text'; 
                     inReps.className = 'input-ex-reps';
-                    inReps.placeholder = 'Wdh (z.B. 10-8-6)';
+                    inReps.placeholder = 'Wdh';
 
                     const addBtn = document.createElement('button');
                     addBtn.className = 'btn-add-ex';
