@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ultimate Gym Progress Tracker</title>
-    <!-- Chart.js für das Diagramm -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -198,7 +197,6 @@
 <body>
 
 <div class="container">
-    <!-- Header & Groq API Key Setup -->
     <div class="card">
         <h2>🔑 API Konfiguration</h2>
         <label for="groq-key">Groq API Key (für KI-Pläne & Motivation):</label>
@@ -206,7 +204,6 @@
         <div id="api-status" class="status-msg"></div>
     </div>
 
-    <!-- Plan Erstellung (KI + Offline Fallback) -->
     <div class="card">
         <h2>📋 Trainingsplan zusammenstellen</h2>
         <div class="tab-buttons">
@@ -215,21 +212,18 @@
             <button class="tab-btn" onclick="switchTab('manual')">Manuell (Offline)</button>
         </div>
 
-        <!-- Text KI -->
         <div id="tab-text" class="tab-content">
             <label for="plan-text">Füge deinen Plan als Text ein:</label>
             <textarea id="plan-text" rows="4" placeholder="z.B. Montag: Bankdrücken 3x8, Seitheben 4x12..."></textarea>
             <button onclick="generatePlanFromText()">Plan aus Text generieren</button>
         </div>
 
-        <!-- Foto KI -->
         <div id="tab-photo" class="tab-content" style="display: none;">
             <label for="plan-photo">Foto/Screenshot deines Plans hochladen:</label>
             <input type="file" id="plan-photo" accept="image/*">
             <button onclick="generatePlanFromImage()">Plan aus Foto parsen</button>
         </div>
 
-        <!-- Manuell (Offline Fallback) -->
         <div id="tab-manual" class="tab-content" style="display: none;">
             <label for="manual-ex-name">Übung selbst hinzufügen (ohne KI):</label>
             <div class="manual-input-group">
@@ -241,7 +235,6 @@
         <div id="ai-status" class="status-msg"></div>
     </div>
 
-    <!-- Tracker Section -->
     <div class="card">
         <div class="week-nav">
             <button onclick="changeWeek(-1)">◀ Woche zurück</button>
@@ -249,13 +242,10 @@
             <button onclick="changeWeek(1)">Woche vor ▶</button>
         </div>
 
-        <div id="workout-editor" class="exercise-grid">
-            <!-- Dynamisch gefüllt -->
-        </div>
+        <div id="workout-editor" class="exercise-grid"></div>
         <button onclick="clearPlan()" style="background-color: var(--accent-red); margin-top: 20px;">Gesamten Plan löschen</button>
     </div>
 
-    <!-- Analytics & Diagramme -->
     <div class="card">
         <h2>📊 Langzeit-Fortschritt</h2>
         <label for="chart-exercise-select">Wähle eine Übung aus:</label>
@@ -268,10 +258,7 @@
 
 <script>
     let activeWeek = 1;
-    let gymData = JSON.parse(localStorage.getItem('gym_tracker_data_v2')) || {
-        plan: [],
-        logs: {}
-    };
+    let gymData = JSON.parse(localStorage.getItem('gym_tracker_data_v2')) || { plan: [], logs: {} };
     let chartInstance = null;
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -320,10 +307,9 @@
             document.querySelectorAll('.tab-btn')[2].classList.add('active');
             document.getElementById('tab-manual').style.display = 'block';
         }
-        setStatus('ai-status', '', 'success'); // Clear status
+        setStatus('ai-status', '', 'success');
     }
 
-    // --- MANUELLE EINGABE (OFFLINE) ---
     function addManualExercise() {
         const input = document.getElementById('manual-ex-name');
         const exName = input.value.trim();
@@ -335,7 +321,7 @@
             renderTracker();
             populateExerciseSelect();
             setStatus('ai-status', `✓ "${exName}" manuell hinzugefügt!`, 'success');
-            input.value = ''; // Feld leeren
+            input.value = '';
         } else {
             setStatus('ai-status', `⚠️ Die Übung existiert bereits.`, 'error');
         }
@@ -360,10 +346,8 @@
         }
     }
 
-    // Agressive JSON Extraktion
     function extractJSONArray(rawText) {
         try {
-            // Versuche direkt Regex auf Array-Struktur
             const matchArray = rawText.match(/\[[\s\S]*\]/);
             if (matchArray) {
                 const parsed = JSON.parse(matchArray[0]);
@@ -375,7 +359,6 @@
         throw new Error("Konnte kein gültiges Array finden. Bitte nutze die manuelle Eingabe.");
     }
 
-    // --- GROQ KI (TEXT) ---
     async function generatePlanFromText() {
         const apiKey = getApiKey();
         const text = document.getElementById('plan-text').value;
@@ -393,7 +376,7 @@
                     'Authorization': `Bearer ${apiKey}`
                 },
                 body: JSON.stringify({
-                    model: "llama-3.3-70b-versatile",
+                    model: "llama-3.1-70b-versatile",
                     messages: [{ role: "user", content: prompt }]
                 })
             });
@@ -403,7 +386,6 @@
 
             const exercises = extractJSONArray(data.choices[0].message.content);
 
-            // Übungen zum Plan hinzufügen (ohne Duplikate)
             exercises.forEach(ex => {
                 if (!gymData.plan.includes(ex)) gymData.plan.push(ex);
             });
@@ -418,7 +400,6 @@
         }
     }
 
-    // --- GROQ KI (FOTO) ---
     async function generatePlanFromImage() {
         const apiKey = getApiKey();
         const fileInput = document.getElementById('plan-photo');
@@ -476,7 +457,6 @@
         };
     }
 
-    // --- TRACKER LOGIK ---
     function changeWeek(delta) {
         activeWeek = Math.max(1, activeWeek + delta);
         document.getElementById('current-week-title').innerText = `Woche ${activeWeek}`;
@@ -506,7 +486,6 @@
         return { text: `±0% ➖`, class: "progress-neutral", value: roundedDiff };
     }
 
-    // --- KI GYM BRO MOTIVATION ---
     async function generateMotivation(exercise, progressValue, boxId) {
         const apiKey = getApiKey();
         const motBox = document.getElementById(`mot-${boxId}`);
@@ -525,7 +504,7 @@
                     'Authorization': `Bearer ${apiKey}`
                 },
                 body: JSON.stringify({
-                    model: "llama-3.3-70b-versatile",
+                    model: "llama3-8b-8192",
                     messages: [
                         { role: "system", content: "Du bist ein motivierender Gym-Bro." },
                         { role: "user", content: prompt }
@@ -573,11 +552,9 @@
     }
 
     function saveData() {
-        // Neuen Key nutzen, um sauberen Start zu garantieren
         localStorage.setItem('gym_tracker_data_v2', JSON.stringify(gymData));
     }
 
-    // --- CHART.JS DIAGRAMM ---
     function populateExerciseSelect() {
         const select = document.getElementById('chart-exercise-select');
         select.innerHTML = '';
